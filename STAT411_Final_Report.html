@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spotify Songs Popularity Prediction</title>
+  <style>
+    :root { --fg:#111; --muted:#444; --bg:#fff; --border:#bbb; --code:#f6f8fa; }
+
+    /* Page + typography (IEEE-like, but original implementation) */
+    body {
+      font-family: "Times New Roman", Times, serif;
+      color: var(--fg);
+      background: var(--bg);
+      margin: 0;
+    }
+
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
+    }
+
+    /* Title block */
+    .paper-title {
+      text-align: center;
+      font-size: 26px;
+      font-weight: 700;
+      margin: 0 0 10px;
+      line-height: 1.2;
+    }
+
+    .authors {
+      text-align: center;
+      font-size: 14px;
+      margin: 0 0 12px;
+    }
+
+    .authors .name { font-weight: 700; }
+    .authors .affil { color: var(--muted); }
+
+    /* Two-column layout */
+    .columns {
+      column-count: 2;
+      column-gap: 28px;
+    }
+
+    /* In two-column mode, avoid nested CSS grids that fight columns */
+    .grid { display: block; }
+
+    /* Avoid awkward breaks for key blocks */
+    .no-break { break-inside: avoid; page-break-inside: avoid; }
+    figure, table { break-inside: avoid; page-break-inside: avoid; }
+
+    /* Headings */
+    h2, h3 { font-family: "Times New Roman", Times, serif; }
+    h2 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      margin: 14px 0 6px;
+      text-transform: uppercase;
+    }
+    h3 {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 10px 0 6px;
+    }
+
+    p { margin: 6px 0; font-size: 12px; line-height: 1.35; }
+    ul { margin: 6px 0 6px 18px; padding: 0; font-size: 12px; }
+    li { margin: 2px 0; }
+
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 11px;
+    }
+    pre { background: var(--code); padding: 10px; border-radius: 6px; overflow-x: auto; border: 1px solid #ddd; }
+
+    .muted { color: var(--muted); }
+    .small { font-size: 11px; }
+
+    /* Table style (IEEE-like: caption above for tables) */
+    .table-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      margin: 10px 0 4px;
+      text-transform: uppercase;
+    }
+    .table-caption {
+      font-size: 11px;
+      text-align: center;
+      margin: 0 0 6px;
+      color: var(--muted);
+    }
+    table { border-collapse: collapse; width: 100%; margin: 0 0 10px; }
+    th, td { border: 1px solid var(--border); padding: 5px 6px; font-size: 11px; vertical-align: top; }
+    th { background: #fafafa; text-align: left; }
+
+    /* Figure style (caption below) */
+    figure { margin: 10px 0 10px; }
+    img { max-width: 100%; height: auto; border: 1px solid var(--border); }
+  figcaption { font-size: 11px; color: var(--muted); margin-top: 4px; text-align: left; }
+
+    /* Simple “Abstract/Keywords” box */
+    .abstract {
+      border: 1px solid #ddd;
+      padding: 10px 10px;
+      margin: 0 0 10px;
+    }
+    .abstract b { font-weight: 700; }
+
+    /* Reference list */
+    ol.refs { margin: 6px 0 0 18px; padding: 0; font-size: 11px; }
+    ol.refs li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <h1 class="paper-title">Spotify Songs Popularity Prediction</h1>
+    <div class="authors no-break">
+      <div class="name">Ismet Logoglu</div>
+      <div class="affil">Middle East Technical University (ODTÜ), Department of Statistics, Ankara, Turkey</div>
+      <div class="affil">(STAT 411 — Data Mining Term Project, Fall 2024–2025)</div>
+    </div>
+
+    <div class="abstract no-break">
+      <p><b>Abstract—</b>
+        This study investigates which audio and metadata features are associated with song popularity in a Spotify-style dataset.
+        We build an end-to-end, reproducible pipeline covering cleaning, exploratory and confirmatory analysis, feature engineering and dimension reduction,
+        followed by statistical prediction models for both regression (continuous popularity) and imbalanced classification (top-tier popularity).
+        We emphasize leakage-safe evaluation (train/test split + cross-validation) and report rubric-aligned metrics (ROC-AUC, F1, sensitivity, specificity, and Cohen’s κ).
+      </p>
+      <p><b>Keywords—</b> popularity prediction; statistical modeling; imbalanced classification; feature engineering; PCA; logistic regression; hypothesis testing.</p>
+    </div>
+
+    <div class="columns">
+
+    <h2>I. Introduction</h2>
+    <h3>A.1 Problem statement</h3>
+    <p>We study which audio and metadata features are associated with track <b>popularity</b>, and build <b>statistical predictive models</b> that can:</p>
+    <ul>
+      <li>predict <b>continuous popularity</b> (regression), and</li>
+      <li>classify whether a track is <b>popular</b> (classification).</li>
+    </ul>
+
+    <h3>A.2 Dataset</h3>
+    <p>The project uses a Spotify-like tracks dataset (<code>dataset.csv</code> / <code>dataset1.csv</code>) with a continuous dependent variable <code>popularity</code>, numeric audio features, and categorical variables such as genre (converted to one-hot indicators).</p>
+    <p><b>Model-ready dataset:</b> <code>dataset_knn_plus_genre_onehot_clean.csv</code></p>
+
+    <h3>A.3 What exactly is the target variable?</h3>
+    <p>
+      The central variable in this project is <code>popularity</code>. Conceptually, this is a platform-defined score that approximates how “well-known” or “frequently consumed” a track is.
+      We treat it as the dependent variable (response) for two complementary tasks:
+    </p>
+    <ul>
+      <li><b>Regression task:</b> predict the continuous value of <code>popularity</code>.</li>
+      <li><b>Classification task:</b> predict whether a track belongs to the “popular” group (a binarized version of popularity; defined in Section F.2).</li>
+    </ul>
+    <p>
+      Why do both? Regression asks “how many popularity points,” while classification asks “is this track in the top tier?”.
+      In practical analytics, classification can be more actionable under heavy noise because it focuses on ranking/separation.
+    </p>
+
+  <h2>II. Data Cleaning and Preprocessing</h2>
+    <h3>B.1 Tidy operations</h3>
+    <ul>
+      <li>Standardized key identifiers and cleaned naming columns.</li>
+      <li>Handled duplicates and inconsistencies.</li>
+    </ul>
+    <p class="small muted">(Implemented through the project’s data preparation scripts, including <code>tidy_data.py</code> and related helpers.)</p>
+
+    <h3>B.1.1 Why tidy data matters (explicit explanation)</h3>
+    <p>
+      “Tidy data” is not just a cosmetic preference. If the dataset contains duplicated tracks, invalid ranges, or inconsistent identifiers, then downstream statistics can become misleading.
+      For example:
+    </p>
+    <ul>
+      <li>If the same track appears twice, a train/test split might accidentally put one copy in training and the other in test. That inflates performance (data leakage).</li>
+      <li>If a feature has impossible values (e.g., outside expected bounds), models may learn artefacts rather than true patterns.</li>
+      <li>If identifiers are inconsistent, merges and joins can silently fail, creating missing values that were not truly present.</li>
+    </ul>
+    <p>
+      Therefore, our cleaning step is a statistical validity step: it protects the fairness of evaluation.
+    </p>
+
+    <h3>B.2 Missing value analysis &amp; imputation</h3>
+    <p>This project includes both naturally occurring missingness and <b>artificial missingness</b> introduced on purpose to compare imputers objectively.</p>
+
+    <h3>B.2.1 Artificial missingness injection</h3>
+    <ul>
+      <li>Implemented in <code>introduce_missingness.py</code>.</li>
+      <li>Randomly masks 5–10% of values per numeric column and writes the exact indices to <code>na_indices.json</code> for reproducibility.</li>
+    </ul>
+
+    <h3>B.2.2 Imputation methods tried</h3>
+    <ul>
+      <li><b>Simple imputation</b> (baseline).</li>
+      <li><b>KNN imputation</b> (uses neighborhood structure among correlated audio features).</li>
+      <li><b>KNN + merged genre information</b> (uses genre structure more effectively).</li>
+      <li><b>Iterative imputation</b> exists but is kept optional in code for runtime/stability.</li>
+    </ul>
+
+    <p><b>Final model-ready dataset:</b> <code>dataset_knn_plus_genre_onehot_clean.csv</code></p>
+
+  <h2>III. Exploratory Data Analysis</h2>
+
+    <h3>C.1 Univariate visuals</h3>
+    <div class="grid">
+      <figure>
+        <img src="plots/hist_popularity.png" alt="Histogram of popularity" />
+  <figcaption><b>Fig. 1.</b> Popularity distribution (<code>plots/hist_popularity.png</code>).</figcaption>
+      </figure>
+      <figure>
+        <img src="plots/hist_all_numeric.png" alt="Histograms of numeric features" />
+  <figcaption><b>Fig. 2.</b> Distributions of numeric features (<code>plots/hist_all_numeric.png</code>).</figcaption>
+      </figure>
+      <figure>
+        <img src="plots/box_numeric_modern.png" alt="Boxplots of numeric features" />
+  <figcaption><b>Fig. 3.</b> Boxplots of numeric features (modernized) (<code>plots/box_numeric_modern.png</code>).</figcaption>
+      </figure>
+    </div>
+
+    <h3>C.1.1 How to interpret these univariate plots (very explicit)</h3>
+    <ul>
+      <li><b>Figure C1 (popularity histogram):</b> asks “what is the overall distribution?” If it is skewed/heavy-tailed, then normality assumptions will likely fail.</li>
+      <li><b>Figure C2 (numeric histograms):</b> checks whether features are symmetric, bounded, or extremely skewed. Many audio features are bounded [0,1] but still highly skewed.</li>
+      <li><b>Figure C3 (boxplots):</b> highlights outliers and spread differences. Outliers matter because linear models can be sensitive to extreme points.</li>
+    </ul>
+
+    <h3>C.2 Bivariate/multivariate exploration</h3>
+    <div class="grid">
+      <figure>
+        <img src="plots/heatmap_corr_pearson_triangle_annot.png" alt="Pearson correlation heatmap" />
+        <figcaption><b>Fig. 4.</b> Pearson correlation heatmap (<code>plots/heatmap_corr_pearson_triangle_annot.png</code>).</figcaption>
+      </figure>
+      <figure>
+        <img src="plots/heatmap_corr_spearman_triangle_annot.png" alt="Spearman correlation heatmap" />
+        <figcaption><b>Fig. 5.</b> Spearman correlation heatmap (<code>plots/heatmap_corr_spearman_triangle_annot.png</code>).</figcaption>
+      </figure>
+      <figure>
+        <img src="plots/box_jitter_popularity_by_genre_top12_modern.png" alt="Popularity by top genres" />
+        <figcaption><b>Fig. 6.</b> Popularity by top genres (box + jitter, modernized) (<code>plots/box_jitter_popularity_by_genre_top12_modern.png</code>).</figcaption>
+      </figure>
+    </div>
+
+    <h3>C.2.1 Interpreting the multivariate plots</h3>
+    <p>
+      The correlation heatmaps (Figures C4–C5) are a “map” of linear or monotone dependence between features.
+      We include both Pearson and Spearman because skewness and outliers can distort Pearson correlations.
+    </p>
+    <ul>
+      <li><b>Figure C4 (Pearson):</b> measures linear association. It can understate or misrepresent relationships when distributions are non-normal.</li>
+      <li><b>Figure C5 (Spearman):</b> measures monotone association (rank-based). It is more robust when variables are skewed or contain outliers.</li>
+      <li><b>Figure C6 (genre box+jitter):</b> visual evidence that genres differ in their popularity baselines (distribution shifts).</li>
+    </ul>
+    <p><b>EDA interpretation:</b> popularity is noisy and only moderately predictable from numeric audio features alone; genre contributes a meaningful shift in popularity distributions.</p>
+
+  <h2>IV. Confirmatory Data Analysis</h2>
+    <p>We formalized EDA findings using assumption-aware hypothesis tests (implemented in <code>CDA.py</code>).</p>
+
+    <h3>D.1 Numeric features vs popularity</h3>
+    <ul>
+      <li>Popularity normality (Shapiro sampled): <b>p ≈ 8.147e-30</b> → not normal.</li>
+      <li>Decision rule: use Pearson only when both variables are approximately normal; otherwise use Spearman.</li>
+      <li>Saved correlation table: <code>cda_outputs/cda_numeric_popularity_correlations.csv</code></li>
+    </ul>
+    <div class="note small">
+      <b>Interpretation:</b> With N≈84,699, p-values can be extremely small even for weak effects.
+      We interpret effect size (|corr|) as primary.
+    </div>
+
+    <h3>D.1.1 Full correlation results (table)</h3>
+    <p>
+      The following table is taken directly from <code>cda_outputs/cda_numeric_popularity_correlations.csv</code>.
+      Each row reports a correlation between a numeric feature and <code>popularity</code>, the correlation method chosen by the code (Pearson or Spearman),
+      the corresponding correlation coefficient, and the hypothesis-test p-value.
+    </p>
+    <p class="small muted">
+      Null hypothesis (per feature): H<sub>0</sub>: corr(feature, popularity) = 0.
+      Alternative: H<sub>1</sub>: corr ≠ 0.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>feature</th>
+          <th>method</th>
+          <th>corr</th>
+          <th>p_value</th>
+          <th>normality_p_feature</th>
+          <th>|corr|</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>instrumentalness</td><td>Spearman</td><td>-0.118155</td><td>6.246e-261</td><td>1.210e-76</td><td>0.118155</td></tr>
+        <tr><td>loudness</td><td>Spearman</td><td>0.066571</td><td>8.429e-84</td><td>1.297e-56</td><td>0.066571</td></tr>
+        <tr><td>speechiness</td><td>Spearman</td><td>-0.064301</td><td>2.680e-78</td><td>2.342e-79</td><td>0.064301</td></tr>
+        <tr><td>danceability</td><td>Spearman</td><td>0.053627</td><td>5.488e-55</td><td>1.128e-21</td><td>0.053627</td></tr>
+        <tr><td>time_signature</td><td>Spearman</td><td>0.037861</td><td>2.977e-28</td><td>2.299e-83</td><td>0.037861</td></tr>
+        <tr><td>mode</td><td>Spearman</td><td>-0.016370</td><td>1.895e-06</td><td>1.385e-72</td><td>0.016370</td></tr>
+        <tr><td>energy</td><td>Spearman</td><td>-0.013585</td><td>7.689e-05</td><td>9.019e-40</td><td>0.013585</td></tr>
+        <tr><td>liveness</td><td>Spearman</td><td>-0.012784</td><td>1.988e-04</td><td>6.108e-66</td><td>0.012784</td></tr>
+        <tr><td>duration_ms</td><td>Spearman</td><td>0.011596</td><td>7.387e-04</td><td>6.388e-68</td><td>0.011596</td></tr>
+        <tr><td>tempo</td><td>Spearman</td><td>0.009126</td><td>7.909e-03</td><td>2.131e-19</td><td>0.009126</td></tr>
+        <tr><td>valence</td><td>Spearman</td><td>-0.009126</td><td>7.911e-03</td><td>8.668e-31</td><td>0.009126</td></tr>
+        <tr><td>acousticness</td><td>Spearman</td><td>0.008788</td><td>1.054e-02</td><td>3.359e-57</td><td>0.008788</td></tr>
+        <tr><td>key</td><td>Spearman</td><td>0.002229</td><td>5.166e-01</td><td>2.135e-40</td><td>0.002229</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <b>Academic interpretation (what this means in plain language):</b>
+      Correlations here are statistically detectable due to very large sample size; however, their magnitudes are small.
+      For example, <code>instrumentalness</code> has the strongest association (Spearman ρ ≈ −0.118), which is still a weak monotone relationship.
+      This is consistent with the modeling result that linear models only achieve a moderate R²: the numeric audio features alone do not fully explain popularity.
+      In other words, the data says “there is a relationship,” but it is not a strong relationship.
+    </p>
+
+    <h3>D.2 Popularity differences across genres</h3>
+    <ul>
+      <li>Levene test (variance equality): stat ≈ 162.3, p ≈ 6.066e-287 → heteroscedasticity.</li>
+      <li>Decision: assumptions not met → use Kruskal–Wallis (non-parametric ANOVA).</li>
+      <li>Kruskal–Wallis: H ≈ 3407, p ≈ 0, ε² ≈ 0.3605 (substantial effect).</li>
+      <li>Saved summary table: <code>cda_outputs/cda_genre_popularity_summary.csv</code></li>
+      <li>Saved post-hoc table (Mann–Whitney U + Holm): <code>cda_outputs/cda_genre_posthoc_mannwhitney_holm.csv</code></li>
+    </ul>
+
+    <h3>D.2.1 Genre popularity summary (table)</h3>
+    <p>
+      The following descriptive table is taken from <code>cda_outputs/cda_genre_popularity_summary.csv</code>.
+      It reports the sample size and central tendency (mean/median) of popularity in the top-10 genres used in the CDA.
+    </p>
+    <table>
+      <thead>
+        <tr><th>track_genre</th><th>n</th><th>mean</th><th>median</th><th>std</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>ambient</td><td>944</td><td>44.35699</td><td>50.0</td><td>17.87659</td></tr>
+        <tr><td>sleep</td><td>946</td><td>34.84249</td><td>35.0</td><td>20.48619</td></tr>
+        <tr><td>cantopop</td><td>944</td><td>34.76589</td><td>35.0</td><td>13.64476</td></tr>
+        <tr><td>malay</td><td>945</td><td>30.09841</td><td>28.0</td><td>10.47747</td></tr>
+        <tr><td>disney</td><td>943</td><td>27.37646</td><td>23.0</td><td>11.90244</td></tr>
+        <tr><td>bluegrass</td><td>947</td><td>25.62513</td><td>24.0</td><td>7.90375</td></tr>
+        <tr><td>afrobeat</td><td>940</td><td>24.22128</td><td>21.0</td><td>10.27347</td></tr>
+        <tr><td>black-metal</td><td>944</td><td>22.40784</td><td>19.0</td><td>9.34549</td></tr>
+        <tr><td>tango</td><td>944</td><td>19.87394</td><td>19.0</td><td>4.81954</td></tr>
+        <tr><td>chicago-house</td><td>940</td><td>12.37660</td><td>9.0</td><td>9.71285</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <b>Interpretation:</b>
+      Even at the descriptive level, genres have clearly different popularity centers.
+      For example, <code>ambient</code> in this subset has mean ≈ 44.36 and median 50, while <code>chicago-house</code> has mean ≈ 12.38 and median 9.
+      This “genre baseline shift” is exactly why one-hot encoded genre indicators often become influential coefficients in the regression models.
+    </p>
+
+    <h3>D.2.2 Post-hoc pairwise comparisons (Holm-corrected)</h3>
+    <p>
+      Once Kruskal–Wallis indicates at least one group differs, it does not tell us <i>which</i> genres differ.
+      Therefore, we run pairwise Mann–Whitney U comparisons and apply Holm correction to control family-wise error.
+      The table below is the beginning of <code>cda_outputs/cda_genre_posthoc_mannwhitney_holm.csv</code>.
+    </p>
+    <p class="small muted">
+      Null hypothesis (per pair): The two genres have the same distribution of popularity.
+      Holm correction adjusts p-values because we test many pairs.
+    </p>
+    <table>
+      <thead>
+        <tr><th>genre_1</th><th>genre_2</th><th>U_stat</th><th>p_value_raw</th><th>p_value_holm</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>cantopop</td><td>chicago-house</td><td>818563.5</td><td>1.761e-221</td><td>7.923e-220</td></tr>
+        <tr><td>malay</td><td>chicago-house</td><td>811485.5</td><td>2.123e-212</td><td>9.341e-211</td></tr>
+        <tr><td>disney</td><td>chicago-house</td><td>800756.5</td><td>4.291e-202</td><td>1.845e-200</td></tr>
+        <tr><td>bluegrass</td><td>chicago-house</td><td>799203.0</td><td>3.999e-197</td><td>1.680e-195</td></tr>
+        <tr><td>ambient</td><td>chicago-house</td><td>788719.0</td><td>6.177e-188</td><td>2.533e-186</td></tr>
+        <tr><td>tango</td><td>ambient</td><td>104650.5</td><td>1.770e-182</td><td>7.078e-181</td></tr>
+        <tr><td>black-metal</td><td>chicago-house</td><td>777295.5</td><td>3.136e-176</td><td>1.223e-174</td></tr>
+        <tr><td>afrobeat</td><td>chicago-house</td><td>772349.5</td><td>7.226e-174</td><td>2.746e-172</td></tr>
+        <tr><td>tango</td><td>chicago-house</td><td>761209.0</td><td>1.013e-159</td><td>3.749e-158</td></tr>
+        <tr><td>ambient</td><td>black-metal</td><td>763493.0</td><td>4.399e-159</td><td>1.584e-157</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <b>Interpretation:</b>
+      Many genre pairs remain significant even after Holm correction, which is strong evidence that popularity distributions differ substantially between genres.
+      This provides a statistical justification for keeping genre variables during feature engineering (rather than dropping them as “too categorical”).
+      Operationally, this means that if you know the genre, you already have information about the expected popularity baseline.
+    </p>
+
+  <h2>V. Feature Engineering and Dimension Reduction</h2>
+    <p>Implemented primarily in <code>future_engineering.py</code>.</p>
+
+    <h3>E.1 Feature engineering</h3>
+    <p>We added a small number of interpretable engineered variables (Recitation-style), such as duration transformations and interaction-style features.</p>
+
+    <h3>E.1.1 Why we engineer features at all (explicit)</h3>
+    <p>
+      Raw features are not always in the most model-friendly form. Feature engineering attempts to:
+    </p>
+    <ul>
+      <li>make relationships more linear (e.g., log/scale transformations),</li>
+      <li>capture simple interactions without using black-box models,</li>
+      <li>reduce the burden on the model to “discover” obvious structure.</li>
+    </ul>
+    <p>
+      However, we keep feature engineering conservative, because overly complex handcrafted features can also create overfitting.
+    </p>
+
+    <h3>E.2 Feature selection</h3>
+    <p>Wrapper-style feature selection was included via <b>RFE</b> (top-30 features), always fit on the training split only.</p>
+
+    <h3>E.2.1 Leakage warning (why train-only fitting is mandatory)</h3>
+    <p>
+      Feature selection is itself a learning procedure.
+      If we performed RFE using the full dataset (including test rows), we would leak information about the test distribution into the chosen set of features.
+      That would artificially improve test results.
+      Therefore, RFE is fit strictly on the training set in a pipeline-safe workflow.
+    </p>
+
+    <h3>E.3 Dimension reduction</h3>
+    <p><b>PCA (mandatory):</b> leakage-safe PCA representations were exported as train/test CSVs:</p>
+    <ul>
+      <li><code>cda_outputs/pca_continuous_only_train.csv</code>, <code>cda_outputs/pca_continuous_only_test.csv</code></li>
+      <li><code>cda_outputs/pca_all_features_train.csv</code>, <code>cda_outputs/pca_all_features_test.csv</code></li>
+    </ul>
+    <div class="grid">
+      <figure>
+        <img src="plots/pca_cumulative_explained_variance.png" alt="PCA cumulative explained variance" />
+        <figcaption><b>Figure E1.</b> PCA cumulative explained variance (<code>plots/pca_cumulative_explained_variance.png</code>).</figcaption>
+      </figure>
+      <figure>
+        <img src="plots/pca_2d_popularity.png" alt="2D PCA visualization" />
+        <figcaption><b>Figure E2.</b> 2D PCA visualization (<code>plots/pca_2d_popularity.png</code>).</figcaption>
+      </figure>
+      <figure>
+        <img src="plots/tsne_2d_popularity.png" alt="t-SNE visualization" />
+        <figcaption><b>Figure E3.</b> t-SNE visualization (<code>plots/tsne_2d_popularity.png</code>).</figcaption>
+      </figure>
+      <figure>
+        <img src="plots/umap_2d_popularity.png" alt="UMAP visualization" />
+        <figcaption><b>Figure E4.</b> UMAP visualization (<code>plots/umap_2d_popularity.png</code>).</figcaption>
+      </figure>
+    </div>
+    <p><b>Interpretation:</b> PCA on all-features preserves signal relatively well, while PCA on continuous-only loses important information (genre matters).</p>
+
+    <h3>E.3.1 Why we also include t-SNE and UMAP</h3>
+    <p>
+      The rubric emphasizes PCA as a mandatory dimension reduction method. We include t-SNE and UMAP for <i>visual intuition</i>.
+      They help us see whether the data has separable “clusters” or continuous gradients.
+      Importantly, we do <b>not</b> use t-SNE/UMAP as modeling features (that would complicate reproducibility and can overfit).
+    </p>
+
+  <h2>VI. Statistical Modeling</h2>
+
+    <p>We use only <b>statistical models</b> (not black-box ML) and follow a consistent setup:</p>
+    <ul>
+      <li>Train/Test split with fixed seed: <code>random_state=42</code></li>
+      <li>CV: regression uses KFold, classification uses StratifiedKFold</li>
+      <li>Leakage-safe pipelines: scaling inside CV pipelines</li>
+    </ul>
+
+    <h3>F.0.1 What “leakage-safe pipeline” means (very explicit)</h3>
+    <p>
+      A leakage-safe pipeline means: <b>anything that learns from data</b> (mean/std for scaling, neighbors for KNN, coefficients for regression, PCA loadings, feature selection)
+      must be fit using <b>only training data</b> inside cross-validation.
+      Then, the learned transformation is applied to validation/test data.
+    </p>
+    <p>
+      If we scale or do PCA using the full dataset before splitting, the model indirectly “sees” the test distribution.
+      That is not allowed when we want an honest estimate of generalization.
+    </p>
+
+    <h3>F.1 Regression: predict continuous popularity</h3>
+    <p>Implemented in <code>modeling.py</code>. Models: OLS, Ridge, Lasso, Elastic Net (tuned via CV).</p>
+
+    <figure>
+      <img src="plots/modeling_residuals_vs_fitted.png" alt="Residuals vs fitted" />
+      <figcaption><b>Fig. 7.</b> Residuals vs fitted (assumption check) (<code>plots/modeling_residuals_vs_fitted.png</code>).</figcaption>
+    </figure>
+    <figure>
+      <img src="plots/modeling_qq.png" alt="QQ plot" />
+      <figcaption><b>Fig. 8.</b> QQ plot of residuals (assumption check) (<code>plots/modeling_qq.png</code>).</figcaption>
+    </figure>
+
+    <div class="table-title">TABLE I</div>
+    <div class="table-caption">Regression test metrics (from <code>cda_outputs/modeling_metrics.csv</code>).</div>
+    <table>
+      <thead>
+        <tr><th>Model</th><th>RMSE</th><th>MAE</th><th>R²</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>OLS</td><td>17.0091</td><td>12.1470</td><td>0.3252</td></tr>
+        <tr><td>Ridge</td><td>17.0092</td><td>12.1501</td><td>0.3252</td></tr>
+        <tr><td>Elastic Net</td><td>17.0098</td><td>12.1649</td><td>0.3251</td></tr>
+        <tr><td>Lasso</td><td>17.0099</td><td>12.1639</td><td>0.3251</td></tr>
+      </tbody>
+    </table>
+
+    <p><b>Interpretation:</b> regularization does not change test performance much, indicating OLS is already near-optimal for this linear feature space; overall explanatory power is moderate.</p>
+
+    <h3>F.1.1 Why we report RMSE, MAE, and R² (and what each means)</h3>
+    <ul>
+      <li><b>RMSE</b> penalizes large errors more strongly; in popularity units, it is the typical “size” of a prediction error.</li>
+      <li><b>MAE</b> is more robust to outliers; it describes the typical absolute deviation.</li>
+      <li><b>R²</b> is the fraction of target variance explained by the model (within the limitations of linearity).</li>
+    </ul>
+    <p>
+      In plain language: even our best linear model is still off by ~17 popularity points on average (RMSE) and explains ~32.5% of the variance.
+      This is not “bad modeling” — it is a realistic consequence of unobserved drivers of popularity (marketing, virality, playlist placement, time effects).
+    </p>
+
+    <h3>F.2 Classification: popular vs not popular (imbalanced)</h3>
+    <p>Implemented in <code>modeling_classification.py</code>. We define <code>popular_bin = 1(popularity &ge; 49)</code> (top 25%).</p>
+    <p>Imbalanced requirement is addressed via cost-sensitive learning (<code>class_weight='balanced'</code>) and compared to the unbalanced baseline. SMOTE is disabled in this environment due to an installation incompatibility with scikit-learn.</p>
+
+    <figure>
+      <img src="plots/classification_best_confusion_matrix.png" alt="Confusion matrix" />
+      <figcaption><b>Fig. 9.</b> Confusion matrix for the selected classification model (<code>plots/classification_best_confusion_matrix.png</code>).</figcaption>
+    </figure>
+
+    <h3>F.2.1 Full classification comparison table (rubric metrics)</h3>
+    <p>
+      The table below summarizes all variants evaluated in <code>modeling_classification.py</code>
+      (extracted from <code>cda_outputs/classification_metrics.csv</code>).
+      We report rubric metrics (Sensitivity, Specificity, Kappa, ROC-AUC, F1) and also include Precision and PR-AUC for additional imbalance-aware context.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>variant</th>
+          <th>model</th>
+          <th>ROC-AUC</th>
+          <th>PR-AUC</th>
+          <th>F1</th>
+          <th>Precision</th>
+          <th>Sensitivity</th>
+          <th>Specificity</th>
+          <th>Kappa</th>
+          <th>Accuracy</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>all_features</td><td>logreg_classweight_l2</td><td>0.8229</td><td>0.5961</td><td>0.5837</td><td>0.4640</td><td>0.7866</td><td>0.6948</td><td>0.3911</td><td>0.7179</td></tr>
+        <tr><td>all_features</td><td>logreg_unbalanced_l2</td><td>0.8228</td><td>0.5962</td><td>0.5049</td><td>0.6179</td><td>0.4269</td><td>0.9114</td><td>0.3769</td><td>0.7896</td></tr>
+        <tr><td>feature_selection_rfe_30</td><td>logreg_unbalanced_l2</td><td>0.6981</td><td>0.3891</td><td>0.1683</td><td>0.8278</td><td>0.0937</td><td>0.9935</td><td>0.1235</td><td>0.7672</td></tr>
+        <tr><td>feature_selection_rfe_30</td><td>logreg_classweight_l2</td><td>0.6981</td><td>0.3891</td><td>0.5039</td><td>0.3399</td><td>0.9739</td><td>0.3647</td><td>0.2091</td><td>0.5179</td></tr>
+        <tr><td>pca_all_features</td><td>logreg_unbalanced_l2</td><td>0.8257</td><td>0.6025</td><td>0.4861</td><td>0.6301</td><td>0.3957</td><td>0.9212</td><td>0.3613</td><td>0.7881</td></tr>
+        <tr><td>pca_all_features</td><td><b>logreg_classweight_l2</b></td><td><b>0.8254</b></td><td><b>0.6013</b></td><td><b>0.5946</b></td><td><b>0.4772</b></td><td><b>0.7889</b></td><td><b>0.7068</b></td><td><b>0.4077</b></td><td><b>0.7276</b></td></tr>
+        <tr><td>pca_continuous_only</td><td>logreg_unbalanced_l2</td><td>0.5978</td><td>0.3123</td><td>0.0000</td><td>0.0000</td><td>0.0000</td><td>1.0000</td><td>0.0000</td><td>0.7467</td></tr>
+        <tr><td>pca_continuous_only</td><td>logreg_classweight_l2</td><td>0.5966</td><td>0.3092</td><td>0.4107</td><td>0.2989</td><td>0.6560</td><td>0.4780</td><td>0.0961</td><td>0.5231</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <b>Interpretation (important):</b>
+      Notice how the unbalanced models can look “good” in accuracy and specificity, simply because the negative class is the majority.
+      The balanced models intentionally trade some specificity for much better sensitivity.
+      In an imbalanced setting, that trade is often precisely what we want: we do not want to miss truly popular tracks.
+    </p>
+
+  <h2>VII. Model Evaluation and Conclusions</h2>
+
+    <h3>G.1 Regression: compare representations and regularization</h3>
+    <p>Regression evaluation is implemented in <code>model_eveluation.py</code> and summarized in <code>cda_outputs/leaderboard_regression.csv</code>.</p>
+
+    <p><b>Table G1.</b> Best regression model within each representation (RMSE-minimizing).</p>
+    <table>
+      <thead>
+        <tr><th>Representation</th><th>Selected model</th><th>RMSE</th><th>MAE</th><th>R²</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>all_features</td><td>ols</td><td>17.0091</td><td>12.1470</td><td>0.3252</td></tr>
+        <tr><td>pca_all_features</td><td>ridge</td><td>17.1394</td><td>12.2801</td><td>0.3124</td></tr>
+        <tr><td>feature_selection_rfe_30</td><td>ridge</td><td>17.9595</td><td>13.8537</td><td>0.2476</td></tr>
+        <tr><td>pca_continuous_only</td><td>ols</td><td>20.4541</td><td>17.0061</td><td>0.0208</td></tr>
+      </tbody>
+    </table>
+
+    <p><b>Regression conclusion:</b> best overall is all-features OLS. PCA all-features is close; continuous-only PCA is weak, consistent with genre importance.</p>
+
+    <h3>G.1.1 Full regression model comparison (all candidates)</h3>
+    <p>
+      The table below is copied from <code>cda_outputs/model_evaluation_comparison.csv</code>.
+      It shows that within each representation, OLS/Ridge/Lasso/ElasticNet are extremely close.
+      The main driver of performance differences is <i>representation</i> (all-features vs PCA vs RFE), not the specific linear penalty.
+    </p>
+    <table>
+      <thead>
+        <tr><th>variant</th><th>model</th><th>rmse</th><th>mae</th><th>r2</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>all_features</td><td>ols</td><td>17.0091</td><td>12.1470</td><td>0.3252</td></tr>
+        <tr><td>all_features</td><td>ridge</td><td>17.0092</td><td>12.1501</td><td>0.3252</td></tr>
+        <tr><td>all_features</td><td>elasticnet</td><td>17.0098</td><td>12.1649</td><td>0.3251</td></tr>
+        <tr><td>all_features</td><td>lasso</td><td>17.0099</td><td>12.1639</td><td>0.3251</td></tr>
+        <tr><td>feature_selection_rfe_30</td><td>ridge</td><td>17.9595</td><td>13.8537</td><td>0.2476</td></tr>
+        <tr><td>feature_selection_rfe_30</td><td>elasticnet</td><td>17.9595</td><td>13.8526</td><td>0.2476</td></tr>
+        <tr><td>feature_selection_rfe_30</td><td>lasso</td><td>17.9595</td><td>13.8514</td><td>0.2476</td></tr>
+        <tr><td>feature_selection_rfe_30</td><td>ols</td><td>17.9596</td><td>13.8510</td><td>0.2476</td></tr>
+        <tr><td>pca_all_features</td><td>ridge</td><td>17.1394</td><td>12.2801</td><td>0.3124</td></tr>
+        <tr><td>pca_all_features</td><td>ols</td><td>17.1394</td><td>12.2769</td><td>0.3124</td></tr>
+        <tr><td>pca_all_features</td><td>elasticnet</td><td>17.1395</td><td>12.2790</td><td>0.3124</td></tr>
+        <tr><td>pca_all_features</td><td>lasso</td><td>17.1395</td><td>12.2787</td><td>0.3124</td></tr>
+        <tr><td>pca_continuous_only</td><td>ols</td><td>20.4541</td><td>17.0061</td><td>0.0208</td></tr>
+        <tr><td>pca_continuous_only</td><td>lasso</td><td>20.4541</td><td>17.0063</td><td>0.0208</td></tr>
+        <tr><td>pca_continuous_only</td><td>ridge</td><td>20.4541</td><td>17.0064</td><td>0.0208</td></tr>
+        <tr><td>pca_continuous_only</td><td>elasticnet</td><td>20.4545</td><td>17.0083</td><td>0.0207</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <b>Plain explanation:</b>
+      If you remove genre information (continuous-only PCA), the model nearly collapses (R² ≈ 0.02).
+      If you keep genre information (all-features or PCA all-features), performance immediately improves.
+      Therefore, most of the predictive signal in our data is coming from the categorical/genre structure rather than from subtle numeric audio patterns.
+    </p>
+
+    <h3>G.2 Regression: coefficient interpretation &amp; assumptions</h3>
+    <p>Coefficient tables were saved under <code>cda_outputs/model_evaluation_coefficients_*.csv</code> (e.g., <code>..._all_features_ols.csv</code>). Large coefficients are dominated by genre indicators, which is logically consistent with EDA/CDA findings that genres have different popularity baselines.</p>
+    <p>Assumption diagnostics are provided in Figures F1–F2. Where mild violations exist, the primary goal here is prediction; regularization helps stabilize coefficients under multicollinearity.</p>
+
+    <h3>G.3 Classification: compare base vs balanced across representations</h3>
+    <p>Classification metrics are in <code>cda_outputs/classification_metrics.csv</code>. Per rubric, we do not rely on accuracy alone; we report sensitivity, specificity, kappa, ROC-AUC, and F1 (plus precision and PR-AUC as extra context).</p>
+
+    <p><b>Table G2.</b> Selected classification model per representation (F1-first, tie-break ROC-AUC then Kappa).</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Representation</th><th>Selected model</th><th>ROC-AUC</th><th>F1</th><th>Sensitivity</th><th>Specificity</th><th>Kappa</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>all_features</td><td>logreg_classweight_l2</td><td>0.8229</td><td>0.5837</td><td>0.7866</td><td>0.6948</td><td>0.3911</td></tr>
+        <tr><td>feature_selection_rfe_30</td><td>logreg_classweight_l2</td><td>0.6981</td><td>0.5039</td><td>0.9739</td><td>0.3647</td><td>0.2091</td></tr>
+        <tr><td>pca_all_features</td><td><b>logreg_classweight_l2</b> (final)</td><td><b>0.8254</b></td><td><b>0.5946</b></td><td><b>0.7889</b></td><td><b>0.7068</b></td><td><b>0.4077</b></td></tr>
+        <tr><td>pca_continuous_only</td><td>logreg_classweight_l2</td><td>0.5966</td><td>0.4107</td><td>0.6560</td><td>0.4780</td><td>0.0961</td></tr>
+      </tbody>
+    </table>
+
+    <p><b>Final conclusion:</b> the strongest rubric-aligned classification choice is <b>PCA all-features + cost-sensitive logistic regression</b>, which achieves high ROC-AUC while substantially improving F1 and sensitivity under class imbalance.</p>
+
+    <h3>G.4 PCA explained variance (why PCA does not "throw away everything")</h3>
+    <p>
+      A common beginner misunderstanding is: “If we reduce dimension, we always lose important information.”
+      PCA reduces dimension by keeping directions that preserve variance.
+      The table below is an excerpt from <code>cda_outputs/pca_all_features_variance.csv</code> showing the explained variance ratio per component.
+    </p>
+    <table>
+      <thead>
+        <tr><th>component</th><th>explained_variance_ratio</th><th>cumulative_explained_variance_ratio</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>0.031283</td><td>0.031283</td></tr>
+        <tr><td>2</td><td>0.019083</td><td>0.050366</td></tr>
+        <tr><td>3</td><td>0.014011</td><td>0.064377</td></tr>
+        <tr><td>4</td><td>0.012958</td><td>0.077335</td></tr>
+        <tr><td>5</td><td>0.011676</td><td>0.089012</td></tr>
+        <tr><td>6</td><td>0.010176</td><td>0.099187</td></tr>
+        <tr><td>7</td><td>0.009211</td><td>0.108398</td></tr>
+        <tr><td>8</td><td>0.008768</td><td>0.117166</td></tr>
+        <tr><td>9</td><td>0.008598</td><td>0.125764</td></tr>
+        <tr><td>10</td><td>0.008256</td><td>0.134020</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <b>Interpretation:</b>
+      No single component dominates because the feature space is high-dimensional.
+      PCA is still useful here as a noise-reduction / collinearity-reduction step (helpful for logistic regression),
+      and empirically it performs well in classification when we include the full feature set (“PCA all-features”).
+    </p>
+
+  <h2>VIII. Reproducibility</h2>
+    <p class="small">Key scripts and outputs:</p>
+    <ul class="small">
+      <li>Regression: <code>modeling.py</code>, <code>model_eveluation.py</code></li>
+      <li>Classification: <code>modeling_classification.py</code></li>
+      <li>Leaderboards: <code>leaderboards.py</code> → <code>cda_outputs/leaderboard_*.csv</code></li>
+      <li>Figures: <code>plots/</code></li>
+      <li>Tables/CSVs: <code>cda_outputs/</code></li>
+    </ul>
+
+    <h2>References</h2>
+    <ol class="refs">
+      <li>[1] Placeholder reference: Dataset description and popularity definition (course-provided materials), 2024.</li>
+      <li>[2] Placeholder reference: J. Doe, “Predicting Music Popularity with Linear Models,” Technical Note, 2020.</li>
+      <li>[3] Placeholder reference: Scikit-learn Developers, “scikit-learn: Machine Learning in Python,” documentation, accessed 2025.</li>
+      <li>[4] Placeholder reference: A. Author, “Imputation Methods for Missing Data,” Lecture notes, 2023.</li>
+      <li>[5] Placeholder reference: B. Author, “Nonparametric Tests and Multiple Comparisons,” Lecture notes, 2022.</li>
+    </ol>
+
+    </div> <!-- columns -->
+  </div> <!-- page -->
+</body>
+</html>

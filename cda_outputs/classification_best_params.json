@@ -1,0 +1,26 @@
+{
+  "all_features::logreg_unbalanced_l2": {
+    "model__C": 0.01
+  },
+  "all_features::logreg_classweight_l2": {
+    "model__C": 0.01
+  },
+  "feature_selection_rfe_30::logreg_unbalanced_l2": {
+    "model__C": 0.1
+  },
+  "feature_selection_rfe_30::logreg_classweight_l2": {
+    "model__C": 0.01
+  },
+  "pca_continuous_only::logreg_unbalanced_l2": {
+    "model__C": 0.01
+  },
+  "pca_continuous_only::logreg_classweight_l2": {
+    "model__C": 0.01
+  },
+  "pca_all_features::logreg_unbalanced_l2": {
+    "model__C": 0.01
+  },
+  "pca_all_features::logreg_classweight_l2": {
+    "model__C": 0.01
+  }
+}

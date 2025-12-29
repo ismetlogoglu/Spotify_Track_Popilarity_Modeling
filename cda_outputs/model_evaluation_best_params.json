@@ -1,0 +1,42 @@
+{
+  "all_features::ridge": {
+    "model__alpha": 100.0
+  },
+  "all_features::lasso": {
+    "model__alpha": 0.01
+  },
+  "all_features::elasticnet": {
+    "model__alpha": 0.01,
+    "model__l1_ratio": 0.8
+  },
+  "feature_selection_rfe_30::ridge": {
+    "model__alpha": 100.0
+  },
+  "feature_selection_rfe_30::lasso": {
+    "model__alpha": 0.0005
+  },
+  "feature_selection_rfe_30::elasticnet": {
+    "model__alpha": 0.001,
+    "model__l1_ratio": 0.2
+  },
+  "pca_continuous_only::ridge": {
+    "model__alpha": 100.0
+  },
+  "pca_continuous_only::lasso": {
+    "model__alpha": 0.001
+  },
+  "pca_continuous_only::elasticnet": {
+    "model__alpha": 0.01,
+    "model__l1_ratio": 0.2
+  },
+  "pca_all_features::ridge": {
+    "model__alpha": 100.0
+  },
+  "pca_all_features::lasso": {
+    "model__alpha": 0.001
+  },
+  "pca_all_features::elasticnet": {
+    "model__alpha": 0.001,
+    "model__l1_ratio": 0.2
+  }
+}

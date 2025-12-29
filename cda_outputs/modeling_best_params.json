@@ -1,0 +1,12 @@
+{
+  "ridge": {
+    "model__alpha": 100.0
+  },
+  "lasso": {
+    "model__alpha": 0.01
+  },
+  "elasticnet": {
+    "model__alpha": 0.01,
+    "model__l1_ratio": 0.8
+  }
+}

@@ -1,0 +1,16 @@
+# Large CSV files (exceed GitHub limits)
+cda_outputs/pca_all_features_train.csv
+cda_outputs/pca_all_features_test.csv
+cda_outputs/pca_continuous_only_train.csv
+cda_outputs/pca_continuous_only_test.csv
+dataset_knn_plus_genre_onehot_clean.csv
+dataset_knn_plus_genre_merged.csv
+dataset_tidy_knn_imputed_full.csv
+dataset_tidy_knn_imputed_full_clean.csv
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
